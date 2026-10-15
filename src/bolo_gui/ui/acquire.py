@@ -25,11 +25,17 @@ class AcquirePanel(ttk.Frame):
         cal = ttk.LabelFrame(self, text="Calibration")
         cal.pack(fill="x", pady=(0, 4))
         self.cal_mode = tk.StringVar(value=CalMode.CAL_FLUSH.label)
-        ttk.Combobox(cal, textvariable=self.cal_mode, state="readonly", width=20,
-                     values=[m.label for m in CalMode]).grid(row=0, column=0, padx=4, pady=4)
+        combo = ttk.Combobox(cal, textvariable=self.cal_mode, state="readonly", width=20,
+                             values=[m.label for m in CalMode])
+        combo.grid(row=0, column=0, padx=4, pady=4)
         self._button(cal, "Calibrate", "calibrate").grid(row=0, column=1, padx=4, pady=4)
+        self.cal_response = tk.BooleanVar(value=settings.cal_show_response)
+        self.cal_response_cb = ttk.Checkbutton(
+            cal, text="Show sensor response (read data before flush)", variable=self.cal_response)
+        self.cal_response_cb.grid(row=1, column=0, columnspan=2, sticky="w", padx=4)
+        combo.bind("<<ComboboxSelected>>", lambda _e: self._update_cal_response())
         ttk.Label(cal, text="Remove the light source first.", foreground="#666").grid(
-            row=1, column=0, columnspan=2, sticky="w", padx=4)
+            row=2, column=0, columnspan=2, sticky="w", padx=4)
 
         # -- capture ------------------------------------------------------------
         cap = ttk.LabelFrame(self, text="Capture")
@@ -108,6 +114,14 @@ class AcquirePanel(ttk.Frame):
         if d:
             self.data_dir.set(d)
 
+    def _update_cal_response(self) -> None:
+        """The option only applies to 'Calibrate + flush'."""
+        on = self.selected_cal_mode() == CalMode.CAL_FLUSH
+        self.cal_response_cb.state(["!disabled"] if on else ["disabled"])
+
+    def show_cal_response(self) -> bool:
+        return self.selected_cal_mode() == CalMode.CAL_FLUSH and self.cal_response.get()
+
     def selected_cal_mode(self) -> CalMode:
         return next(m for m in CalMode if m.label == self.cal_mode.get())
 
@@ -121,6 +135,7 @@ class AcquirePanel(ttk.Frame):
         s.trigger = self.trigger.get()
         s.autosave = self.autosave.get()
         s.watch = self.watch.get()
+        s.cal_show_response = self.cal_response.get()
         try:
             s.post = int(self.post.get())
             s.cycles = int(self.cycles.get())

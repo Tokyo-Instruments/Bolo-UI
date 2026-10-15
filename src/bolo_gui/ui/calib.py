@@ -34,6 +34,9 @@ class CalibPanel(ttk.Frame):
                              f"tau {TAU_RANGE[0]:g}–{TAU_RANGE[1]:g} s").pack(anchor="w", padx=6)
         self._results: dict[str, dict[int, CalResult]] = {}
 
+    def bad_count(self) -> int:
+        return sum(not r.in_range() for res in self._results.values() for r in res.values())
+
     def update_results(self, uut: str, results: dict[int, CalResult], source: str = "gui") -> None:
         self._results[uut] = results
         self.tree.delete(*self.tree.get_children())

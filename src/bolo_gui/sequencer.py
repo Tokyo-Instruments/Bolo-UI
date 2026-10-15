@@ -82,6 +82,24 @@ def calibrate(devs: list[BoloDevice], mode: CalMode = CalMode.CAL_FLUSH,
     return transcripts
 
 
+def calibrate_with_response(devs: list[BoloDevice], settle_s: float = CAL_SETTLE_S
+                            ) -> tuple[dict[str, str], list[Shot]]:
+    """Calibrate + flush, but read the calibration data (MAG/PHI/OHI/OHV) in between.
+
+    A normal calibration (BOLO8_CAL) flushes the filters and with them the
+    calibration data. This runs the documented manual sequence instead
+    (guide §4.3.1/4.3.2): calibrate without flush, offload, flush only.
+    The flush runs even if reading the data fails.
+    """
+    transcripts = calibrate(devs, CalMode.CAL_ONLY, settle_s)
+    shots: list[Shot] = []
+    try:
+        shots = offload(devs, "CAL", {"calibration": CalMode.CAL_ONLY.label})
+    finally:
+        flushed = calibrate(devs, CalMode.FLUSH, settle_s)
+    return {n: transcripts[n] + flushed.get(n, "") for n in transcripts}, shots
+
+
 def capture(devs: list[BoloDevice], post: int, trigger: str = "int",
             abort: threading.Event | None = None) -> None:
     """Arm all boxes, trigger (soft trigger for 'int'), wait until all stopped."""

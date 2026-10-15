@@ -207,6 +207,19 @@ class BoloApp:
                 return
         active = dict(self.channels.active)
 
+        if self.acquire.show_cal_response():
+            def job_resp():
+                sequencer.set_active(devs, active)
+                return sequencer.calibrate_with_response(devs)
+
+            def done_resp(result):
+                transcripts, shots = result
+                self._calibrated(devs, mode, transcripts)
+                if shots:
+                    self._new_shots(shots, False)        # plot; saved if autosave is on
+            self.worker.submit("Calibrate + flush (with response)", job_resp, on_done=done_resp)
+            return
+
         def job():
             sequencer.set_active(devs, active)
             return sequencer.calibrate(devs, mode)
@@ -228,11 +241,16 @@ class BoloApp:
             self.devices_panel.set_status(d.name, "needs flush" if d.needs_flush else "idle")
         if mode != CalMode.FLUSH:
             self.notebook.select(self.calib)
+            self._update_calib_tab()
         if mode == CalMode.CAL_ONLY:
             if messagebox.askyesno("Calibration data",
                                    "Read the calibration data (MAG/PHI/OHI/OHV) from the box now?\n"
                                    "Run 'Flush only' afterwards, before the next capture."):
                 self.read_box()
+
+    def _update_calib_tab(self) -> None:
+        nbad = self.calib.bad_count()
+        self.notebook.tab(self.calib, text=f"Calibration ({nbad} ⚠)" if nbad else "Calibration")
 
     def _capture_meta(self) -> dict:
         return {"post": int(self.acquire.post.get()), "trigger": self.acquire.trigger.get()}
@@ -386,6 +404,7 @@ class BoloApp:
 
             def done(results, name=ev.uut):
                 self.calib.update_results(name, results, "external")
+                self._update_calib_tab()
                 try:
                     append_cal_history(self.data_dir, name, results, "external")
                 except OSError as e:
@@ -415,8 +434,7 @@ class BoloApp:
         self.acquire.store(self.settings)
         self.settings.active = dict(self.channels.active)
         self.settings.uuts = [getattr(d, "spec", d.name) for d in self.devices.values()]
-        self.settings.plot_quantity = next(
-            (q for q, v in self.plot.qty_vars.items() if v.get()), "PWR")
+        self.settings.plot_quantity = self.plot.capture_quantity()
         self.settings.save()
         for d in self.devices.values():
             try:

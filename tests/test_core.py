@@ -113,3 +113,13 @@ def test_panel_button_is_external(devs):
     assert done.wait(5)
     assert seen[-1].source == "external" and seen[-1].kind == "CAPTURE"
     assert devs[0].buffer_mode == "CAP"
+
+
+def test_calibrate_with_response(devs):
+    transcripts, shots = sequencer.calibrate_with_response(devs, settle_s=0)
+    assert [s.mode for s in shots] == ["CAL", "CAL"]
+    assert set(shots[0].quantities) == {"MAG", "PHI", "OHI", "OHV"}
+    assert shots[0].values(1, "OHV").max() > 1.0              # heating step visible
+    assert not any(d.needs_flush for d in devs)               # flushed afterwards
+    assert "power_filter_design" in transcripts["a"]          # flush transcript appended
+    sequencer.capture(devs, 1000)                             # capture allowed again

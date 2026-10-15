@@ -44,6 +44,8 @@ class PlotPanel(ttk.Frame):
         self.shots: list[Shot] = []
         self._lines = []                 # (line, x_full, y_full)
         self._updating = False
+        self._mode = ""
+        self._selection = {"CAP": {default_quantity}, "CAL": {"MAG", "OHV"}}
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=4, pady=2)
@@ -88,8 +90,16 @@ class PlotPanel(ttk.Frame):
         self.canvas.draw_idle()
 
     def show(self, shots: list[Shot]) -> None:
-        self.shots = shots
         modes = {s.mode for s in shots}
+        mode = "/".join(sorted(modes))
+        if mode != self._mode:
+            # remember the selection per layout: PWR for captures, MAG + OHV for calibrations
+            if self._mode:
+                self._selection[self._mode] = {q for q, v in self.qty_vars.items() if v.get()}
+            for q, v in self.qty_vars.items():
+                v.set(q in self._selection.get(mode, set()))
+            self._mode = mode
+        self.shots = shots
         avail = {q for s in shots for q in s.quantities}
         for q, b in self.qty_buttons.items():
             b.state(["!disabled"] if q in avail else ["disabled"])
@@ -98,9 +108,16 @@ class PlotPanel(ttk.Frame):
             self.qty_vars[first].set(True)
         if shots:
             s0 = shots[0]
-            src = {"external": " · started from panel/external", "file": " · from file"}.get(s0.source, "")
-            self.title.configure(text=f"{'/'.join(sorted(modes))} {s0.timestamp:%Y-%m-%d %H:%M:%S}{src}")
+            src = {"external": " · panel/ext", "file": " · file"}.get(s0.source, "")
+            what = "Cal" if mode == "CAL" else mode
+            self.title.configure(text=f"{what} {s0.timestamp:%H:%M:%S}{src}")
         self.redraw()
+
+    def capture_quantity(self) -> str:
+        """First selected quantity for captures (remembered across sessions)."""
+        sel = ({q for q, v in self.qty_vars.items() if v.get()} if self._mode in ("", "CAP")
+               else self._selection.get("CAP", set()))
+        return next((q for q in ("PWR", "MAG", "PHI") if q in sel), "PWR")
 
     def redraw(self) -> None:
         if not self.shots:
