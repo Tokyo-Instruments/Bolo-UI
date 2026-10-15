@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from ..config import SAMPLE_RATE, TRIGGERS, Settings
+from ..data import SAVE_FORMATS
 from ..device import CalMode
 
 
@@ -88,13 +89,17 @@ class AcquirePanel(ttk.Frame):
         ttk.Label(sv, text="Note:").grid(row=1, column=0, sticky="w", padx=4)
         self.note = tk.StringVar()
         ttk.Entry(sv, textvariable=self.note, width=24).grid(row=1, column=1, columnspan=2, sticky="we")
+        ttk.Label(sv, text="Format:").grid(row=2, column=0, sticky="w", padx=4)
+        self.save_format = tk.StringVar(value=SAVE_FORMATS.get(settings.save_format, SAVE_FORMATS["dat"]))
+        ttk.Combobox(sv, textvariable=self.save_format, state="readonly", width=14,
+                     values=list(SAVE_FORMATS.values())).grid(row=2, column=1, sticky="w")
         self.autosave = tk.BooleanVar(value=settings.autosave)
         ttk.Checkbutton(sv, text="Autosave every capture", variable=self.autosave).grid(
-            row=2, column=0, columnspan=3, sticky="w", padx=4)
+            row=3, column=0, columnspan=3, sticky="w", padx=4)
         self.watch = tk.BooleanVar(value=settings.watch)
         ttk.Checkbutton(sv, text="Watch for panel-button / external shots",
-                        variable=self.watch).grid(row=3, column=0, columnspan=3, sticky="w", padx=4)
-        self._button(sv, "Save last shot", "save").grid(row=4, column=0, columnspan=3,
+                        variable=self.watch).grid(row=4, column=0, columnspan=3, sticky="w", padx=4)
+        self._button(sv, "Save last shot", "save").grid(row=5, column=0, columnspan=3,
                                                          sticky="w", padx=4, pady=4)
         sv.columnconfigure(1, weight=1)
 
@@ -122,6 +127,10 @@ class AcquirePanel(ttk.Frame):
     def show_cal_response(self) -> bool:
         return self.selected_cal_mode() == CalMode.CAL_FLUSH and self.cal_response.get()
 
+    def selected_format(self) -> str:
+        """Key of data.SAVE_FORMATS for the format chosen in the combobox."""
+        return next((k for k, v in SAVE_FORMATS.items() if v == self.save_format.get()), "dat")
+
     def selected_cal_mode(self) -> CalMode:
         return next(m for m in CalMode if m.label == self.cal_mode.get())
 
@@ -134,6 +143,7 @@ class AcquirePanel(ttk.Frame):
         s.data_dir = self.data_dir.get()
         s.trigger = self.trigger.get()
         s.autosave = self.autosave.get()
+        s.save_format = self.selected_format()
         s.watch = self.watch.get()
         s.cal_show_response = self.cal_response.get()
         try:

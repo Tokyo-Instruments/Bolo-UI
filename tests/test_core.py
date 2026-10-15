@@ -123,3 +123,32 @@ def test_calibrate_with_response(devs):
     assert not any(d.needs_flush for d in devs)               # flushed afterwards
     assert "power_filter_design" in transcripts["a"]          # flush transcript appended
     sequencer.capture(devs, 1000)                             # capture allowed again
+
+
+@pytest.mark.parametrize("fmt", ["hdf5", "both"])
+def test_hdf5_roundtrip(devs, tmp_path, fmt):
+    h5py = pytest.importorskip("h5py")
+    sequencer.calibrate(devs, CalMode.CAL_FLUSH, settle_s=0)
+    sequencer.capture(devs, post=5000, trigger="int")
+    shots = sequencer.offload(devs, "CAP", {"post": 5000, "trigger": "int"})
+    folder = save_shots(shots, tmp_path, note="h5", fmt=fmt)
+    assert (folder / "shot.h5").exists()
+    assert any(folder.glob("*.dat")) == (fmt == "both")
+    with h5py.File(folder / "shot.h5") as f:
+        assert f.attrs["note"] == "h5"
+        pwr = f["b/PWR"]
+        assert pwr.shape == (32, 5000) and pwr.attrs["unit"] == "mW"
+        assert (pwr[2] == shots[1].raw(3, "PWR")).all()
+        assert f["a/calibfit"]["channel"].tolist() == list(range(1, 9))
+    for back in (load_shots(folder / "shot.h5"), load_shots(folder)):
+        assert [s.uut for s in back] == ["a", "b"]
+        assert all((x.data == y.data).all() for x, y in zip(shots, back))
+        assert back[0].meta["post"] == 5000 and back[0].source == "gui"
+
+
+def test_hdf5_cal_layout(devs, tmp_path):
+    pytest.importorskip("h5py")
+    _, shots = sequencer.calibrate_with_response(devs[:1], settle_s=0)
+    back = load_shots(save_shots(shots, tmp_path, fmt="hdf5"))[0]
+    assert back.mode == "CAL" and back.data.dtype == shots[0].data.dtype
+    assert (back.data == shots[0].data).all()

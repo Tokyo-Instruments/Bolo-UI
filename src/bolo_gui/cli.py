@@ -29,6 +29,8 @@ def get_parser() -> argparse.ArgumentParser:
     p.add_argument("--post", type=int, help="POST samples per capture (10 kHz; default 100000)")
     p.add_argument("--trg", choices=TRIGGERS, help="trigger source")
     p.add_argument("--active-chan", help='active channels, ";" between boxes, e.g. "1,2,3;1-8"')
+    p.add_argument("--format", choices=("dat", "hdf5", "both"), dest="save_format",
+                   help="save format: D-TACQ .dat files, HDF5, or both (default dat)")
     p.add_argument("--autosave", action="store_true", default=None, help="save every capture")
     p.add_argument("--sim-nchan", type=int, default=8, help="channels of sim:NAME boxes")
     p.add_argument("--sim-speed", type=float, default=0.3,
@@ -46,6 +48,8 @@ def _settings_from_args(args) -> Settings:
         s.post = args.post
     if args.trg:
         s.trigger = args.trg
+    if args.save_format:
+        s.save_format = args.save_format
     if args.autosave:
         s.autosave = True
     if args.active_chan:
@@ -91,7 +95,7 @@ def selftest(devs, settings: Settings) -> int:
         log.info("%s: %d channels calibrated, out of range: %s", d.name, len(d.last_cal), bad or "none")
     sequencer.capture(devs, settings.post, "int")
     shots = sequencer.offload(devs, "CAP", {"post": settings.post, "trigger": "int"})
-    folder = save_shots(shots, settings.data_dir, note="selftest")
+    folder = save_shots(shots, settings.data_dir, note="selftest", fmt=settings.save_format)
     back = load_shots(folder)
     ok = all((a.data == b.data).all() for a, b in zip(shots, back))
     log.info("saved to %s, reload %s", folder, "OK" if ok else "MISMATCH")

@@ -52,6 +52,7 @@ class Settings:
     autosave: bool = False
     watch: bool = True                     # react to shots started outside the GUI
     cycles: int = 1
+    save_format: str = "dat"                # "dat", "hdf5" or "both" (data.SAVE_FORMATS)
     cal_show_response: bool = True         # read calibration data before the flush
     plot_quantity: str = "PWR"
     active: dict = field(default_factory=dict)   # uut -> [channels]

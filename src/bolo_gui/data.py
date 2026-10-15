@@ -1,9 +1,23 @@
 """Shot data: layout, scaling, saving and loading.
 
-Saved layout matches D-TACQ's bolo_demux.py so existing analysis keeps working::
+Each acquisition goes into one folder, in one or both formats (SAVE_FORMATS)::
 
-    <data_dir>/<YYYYmmdd_HHMMSS>/<uut>.<ch>_<QTY>.<CAP|CAL>.dat   raw codes, no header
-    <data_dir>/<YYYYmmdd_HHMMSS>/shot.json                          metadata (added by this app)
+    <data_dir>/<YYYYmmdd_HHMMSS>/<uut>.<ch>_<QTY>.<CAP|CAL>.dat   "dat": as D-TACQ's bolo_demux.py,
+    <data_dir>/<YYYYmmdd_HHMMSS>/shot.json                          raw codes, no header + metadata
+    <data_dir>/<YYYYmmdd_HHMMSS>/shot.h5                            "hdf5": everything in one file
+
+HDF5 layout (raw codes; value = raw * attrs["scale"] in attrs["unit"])::
+
+    /                       attrs: timestamp, note, sample_rate, skip_samples, format, ...
+    /<uut>/                 attrs: mode, nchan, nsam, active_channels, source, post, trigger,
+                                   meta_json (all metadata as JSON)
+    /<uut>/<QTY>            int32/int16 [nchan, nsam], row i = channel i+1; attrs scale, unit
+    /<uut>/calibfit         table channel, sensitivity, tau, I0, Q0 (if calibrated)
+
+    import h5py
+    with h5py.File("shot.h5") as f:
+        pwr = f["acq2206_077/PWR"]
+        mw = pwr[0] * pwr.attrs["scale"]            # channel 1 in mW
 """
 
 from __future__ import annotations
@@ -71,11 +85,21 @@ class Shot:
         return np.arange(self.nsam) / SAMPLE_RATE
 
 
+SAVE_FORMATS = {"dat": "D-TACQ .dat", "hdf5": "HDF5", "both": ".dat + HDF5"}
+H5_NAME = "shot.h5"
+H5_FORMAT = "bolo_gui/1"
+
+
 def save_shots(shots: list[Shot], data_dir: str | Path, note: str = "",
-               extra: dict | None = None) -> Path:
-    """Write all shots of one acquisition into one timestamped folder; return it."""
+               extra: dict | None = None, fmt: str = "dat") -> Path:
+    """Write all shots of one acquisition into one timestamped folder; return it.
+    fmt: "dat" (D-TACQ layout + shot.json), "hdf5" (shot.h5) or "both"."""
     if not shots:
         raise ValueError("nothing to save")
+    if fmt not in SAVE_FORMATS:
+        raise ValueError(f"unknown save format {fmt!r}")
+    if fmt in ("hdf5", "both"):
+        _import_h5py()                           # fail before creating the folder
     ts = shots[0].timestamp
     root = Path(data_dir).expanduser()
     folder = root / ts.strftime(TIMESTAMP_FMT)
@@ -91,30 +115,103 @@ def save_shots(shots: list[Shot], data_dir: str | Path, note: str = "",
         "sample_rate": SAMPLE_RATE,
         "skip_samples": SKIP_SAMPLES,
         "scales": {q: {"scale": s, "unit": u} for q, (s, u, _) in QUANTITIES.items()},
-        "uuts": {},
+        "uuts": {shot.uut: _uut_meta(shot) for shot in shots},
         **(extra or {}),
     }
-    for shot in shots:
-        for name in shot.data.dtype.names:
-            shot.data[name].tofile(folder / f"{shot.uut}.{name}.{shot.mode}.dat")
-        meta["uuts"][shot.uut] = {
-            "mode": shot.mode,
-            "nchan": shot.nchan,
-            "nsam": shot.nsam,
-            "active_channels": shot.active,
-            "source": shot.source,
-            **shot.meta,
-        }
-    (folder / "shot.json").write_text(json.dumps(meta, indent=2, default=str))
+    if fmt in ("dat", "both"):
+        for shot in shots:
+            for name in shot.data.dtype.names:
+                shot.data[name].tofile(folder / f"{shot.uut}.{name}.{shot.mode}.dat")
+        (folder / "shot.json").write_text(json.dumps(meta, indent=2, default=str))
+    if fmt in ("hdf5", "both"):
+        _write_h5(folder / H5_NAME, shots, meta)
     return folder
+
+
+def _uut_meta(shot: Shot) -> dict:
+    return {"mode": shot.mode, "nchan": shot.nchan, "nsam": shot.nsam,
+            "active_channels": shot.active, "source": shot.source, **shot.meta}
+
+
+def _import_h5py():
+    try:
+        import h5py
+    except ImportError as e:
+        raise RuntimeError("HDF5 saving needs h5py: <venv>/bin/pip install h5py") from e
+    return h5py
+
+
+def _write_h5(path: Path, shots: list[Shot], meta: dict) -> None:
+    h5py = _import_h5py()
+    with h5py.File(path, "w") as f:
+        f.attrs["format"] = H5_FORMAT
+        for k in ("timestamp", "note", "sample_rate", "skip_samples"):
+            f.attrs[k] = meta[k]
+        for k, v in meta.items():
+            if k not in ("uuts", "scales") and k not in f.attrs and isinstance(v, (str, int, float)):
+                f.attrs[k] = v
+        for shot in shots:
+            g = f.create_group(shot.uut)
+            umeta = meta["uuts"][shot.uut]
+            for k in ("mode", "nchan", "nsam", "source", "post", "trigger"):
+                if k in umeta:
+                    g.attrs[k] = umeta[k]
+            g.attrs["active_channels"] = np.asarray(shot.active, dtype=np.int32)
+            g.attrs["meta_json"] = json.dumps(umeta, default=str)
+            for qty, t in LAYOUT[shot.mode]:
+                arr = np.stack([shot.raw(ch, qty) for ch in range(1, shot.nchan + 1)])
+                ds = g.create_dataset(qty, data=arr.astype(t, copy=False),
+                                      compression="gzip", compression_opts=4, shuffle=True,
+                                      chunks=(1, min(shot.nsam, 65536)) if shot.nsam else None)
+                scale, unit, title = QUANTITIES[qty]
+                ds.attrs.update(scale=scale, unit=unit, title=title, first_channel=1)
+            cal = shot.meta.get("calibfit")
+            if cal:
+                rows = [(int(ch), c["sensitivity"], c["tau"], c["I0"], c["Q0"])
+                        for ch, c in sorted(cal.items(), key=lambda kv: int(kv[0]))]
+                g.create_dataset("calibfit", data=np.array(rows, dtype=[
+                    ("channel", "i4"), ("sensitivity", "f8"), ("tau", "f8"),
+                    ("I0", "f8"), ("Q0", "f8")]))
+
+
+def _read_h5(path: Path) -> list[Shot]:
+    h5py = _import_h5py()
+    shots = []
+    with h5py.File(path, "r") as f:
+        ts = dt.datetime.fromisoformat(f.attrs["timestamp"])
+        for uut, g in f.items():
+            umeta = json.loads(g.attrs.get("meta_json", "{}"))
+            mode, nchan = str(g.attrs["mode"]), int(g.attrs["nchan"])
+            dtype = make_dtype(nchan, mode)
+            nsam = g[LAYOUT[mode][0][0]].shape[1]
+            data = np.zeros(nsam, dtype=dtype)
+            for qty, _ in LAYOUT[mode]:
+                arr = g[qty][()]
+                for ch in range(1, nchan + 1):
+                    data[f"{ch}_{qty}"] = arr[ch - 1]
+            for k in ("mode", "nchan", "nsam"):
+                umeta.pop(k, None)
+            shots.append(Shot(uut=uut, mode=mode, data=data, nchan=nchan,
+                              active=[int(c) for c in umeta.pop("active_channels", [])],
+                              timestamp=ts, source=umeta.pop("source", "file"), meta=umeta))
+    return shots
 
 
 _DAT_RE = re.compile(r"^(?P<uut>.+)\.(?P<ch>\d+)_(?P<qty>[A-Z]+)\.(?P<mode>CAP|CAL)\.dat$")
 
 
-def load_shots(folder: str | Path) -> list[Shot]:
-    """Read a folder written by save_shots() or by bolo_shot.sh / bolo_demux.py."""
-    folder = Path(folder)
+def load_shots(path: str | Path) -> list[Shot]:
+    """Read a saved shot: a folder (written by save_shots(), bolo_shot.sh or
+    bolo_demux.py) or an HDF5 file. A folder with both formats is read from the .dat files."""
+    path = Path(path).expanduser()
+    if path.is_file():
+        return _read_h5(path)
+    if not any(path.glob("*.dat")) and (path / H5_NAME).exists():
+        return _read_h5(path / H5_NAME)
+    return _read_dat(path)
+
+
+def _read_dat(folder: Path) -> list[Shot]:
     meta = {}
     if (folder / "shot.json").exists():
         meta = json.loads((folder / "shot.json").read_text())
@@ -152,7 +249,7 @@ def load_shots(folder: str | Path) -> list[Shot]:
             timestamp=ts, source=umeta.pop("source", "file"), meta=umeta,
         ))
     if not shots:
-        raise FileNotFoundError(f"no BOLO .dat files in {folder}")
+        raise FileNotFoundError(f"no BOLO .dat or {H5_NAME} files in {folder}")
     return shots
 
 

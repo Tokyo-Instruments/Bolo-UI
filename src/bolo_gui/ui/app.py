@@ -68,6 +68,7 @@ class BoloApp:
         menubar = tk.Menu(self.root)
         fm = tk.Menu(menubar, tearoff=False)
         fm.add_command(label="Open shot…", command=self.open_shot, accelerator="Ctrl+O")
+        fm.add_command(label="Open HDF5 file…", command=self.open_h5)
         fm.add_command(label="Open data folder", command=self.open_data_folder)
         fm.add_separator()
         fm.add_command(label="Quit", command=self.quit, accelerator="Ctrl+Q")
@@ -334,11 +335,12 @@ class BoloApp:
 
     def _save_async(self, shots: list[Shot]) -> None:
         """Save in a thread of its own, so a running cycle loop is not held up."""
-        data_dir, note = self.data_dir, self.acquire.note.get()
+        data_dir, note, fmt = self.data_dir, self.acquire.note.get(), self.acquire.selected_format()
 
         def run():
             try:
-                folder = save_shots(shots, data_dir, note=note, extra={"app_version": __version__})
+                folder = save_shots(shots, data_dir, note=note, extra={"app_version": __version__},
+                                    fmt=fmt)
             except Exception as e:                       # noqa: BLE001
                 log.error("saving failed: %s", e)
                 self.worker.call_in_ui(messagebox.showerror, "Save failed", str(e))
@@ -356,18 +358,26 @@ class BoloApp:
     def open_shot(self) -> None:
         folder = filedialog.askdirectory(initialdir=self.data_dir, mustexist=True,
                                          title="Open a saved shot folder")
-        if not folder:
-            return
+        if folder:
+            self._open(folder)
+
+    def open_h5(self) -> None:
+        path = filedialog.askopenfilename(initialdir=self.data_dir, title="Open an HDF5 shot",
+                                          filetypes=[("HDF5", "*.h5 *.hdf5"), ("All files", "*")])
+        if path:
+            self._open(path)
+
+    def _open(self, path: str) -> None:
         try:
-            shots = load_shots(folder)
+            shots = load_shots(path)
         except Exception as e:                           # noqa: BLE001
             messagebox.showerror("Open shot", str(e))
             return
         self.last_shots = shots
-        self.last_saved = Path(folder)
+        self.last_saved = Path(path)
         self.plot.show(shots)
         self.notebook.select(self.plot)
-        log.info("opened %s", folder)
+        log.info("opened %s", path)
 
     def open_data_folder(self) -> None:
         path = Path(self.data_dir).expanduser()
