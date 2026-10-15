@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["numpy", "matplotlib", "h5py"]
 
+[project.urls]
+Homepage = "https://github.com/Tokyo-Instruments/Bolo-UI"
+
 [project.optional-dependencies]
 # real hardware; on site hapi is usually already installed editable in the same venv
 hw = ["acq400_hapi @ git+https://github.com/D-TACQ/acq400_hapi"]

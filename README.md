@@ -8,6 +8,8 @@ It drives the hardware through D-TACQ's Python API
 [acq400_hapi](https://github.com/D-TACQ/acq400_hapi), using the same sequence as
 D-TACQ's own scripts (`bolo8_cal_cap_loop.py`, `bolo_demux.py`).
 
+Source: <https://github.com/Tokyo-Instruments/Bolo-UI>
+
 **Contents:**
 1. [What you need](#1-what-you-need)
 2. [Network setup](#2-network-setup)
@@ -29,7 +31,7 @@ D-TACQ's own scripts (`bolo8_cal_cap_loop.py`, `bolo_demux.py`).
 | Control PC | Ubuntu desktop (22.04 or newer, NetworkManager). macOS also works |
 | Network cable | Direct Ethernet connection PC ↔ box (a switch/router also works, see 2.4) |
 | Internet access on the PC | Only during installation (to download hapi and Python packages) |
-| This repository | Copied or cloned to the PC, e.g. `~/PROJECTS/bolo_gui` |
+| This application | Cloned from <https://github.com/Tokyo-Instruments/Bolo-UI> to `~/PROJECTS/bolo_gui` (section 3.3) |
 
 Each BOLO8 module provides 8 bolometer channels. The application reads the
 number of installed channels from the box itself.
@@ -142,8 +144,13 @@ this step and reuse that venv.
 
 ### 3.3 BOLO8 Control
 
-Copy or clone this repository to `~/PROJECTS/bolo_gui`, then install it into
-the same venv:
+Clone the application into `~/PROJECTS/bolo_gui` (no GitHub account needed):
+
+```bash
+git clone https://github.com/Tokyo-Instruments/Bolo-UI.git ~/PROJECTS/bolo_gui
+```
+
+Then install it into the same venv:
 
 ```bash
 ~/PROJECTS/acq400_hapi/.venv/bin/pip install -e ~/PROJECTS/bolo_gui
@@ -181,6 +188,14 @@ cd ~/PROJECTS/acq400_hapi && git pull
 ```
 
 Re-run the `pip install -e` commands only if the update adds new dependencies.
+Local edits to the application's files can make `git pull` stop with a
+conflict; keep site-specific changes (box names, paths) in the launcher
+(section 4) rather than in the code.
+
+PCs without internet access: download the ZIP from the GitHub page
+(*Code ▸ Download ZIP*) on another computer, unpack it to `~/PROJECTS/bolo_gui`,
+and install as above. acq400_hapi and the Python packages then also have to be
+brought over; installing on a networked PC first is much simpler.
 
 ---
 
