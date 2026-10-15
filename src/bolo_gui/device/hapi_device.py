@@ -1,7 +1,7 @@
 """Real BOLO8 box via D-TACQ acq400_hapi.
 
 The control sequence is ported from D-TACQ's bolo8_cal_cap_loop.py,
-bolo_demux.py and bolo8_tester.py (see HANDOVER.md). acq400_hapi is imported
+bolo_demux.py and bolo8_tester.py (see README.md, section 8.1). acq400_hapi is imported
 lazily, so the rest of the app (and the simulator) works without it.
 
 Shots started outside the app (BOLO8-PANEL buttons, another script, Phoebus)

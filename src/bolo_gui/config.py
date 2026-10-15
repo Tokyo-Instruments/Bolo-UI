@@ -1,7 +1,7 @@
 """Constants and user settings.
 
 Scale factors and ranges come from D-TACQ's bolo_demux.py / bolo8_tester.py
-(see HANDOVER.md, "Data format and scaling").
+(see README.md, section 6.1).
 """
 
 from __future__ import annotations
