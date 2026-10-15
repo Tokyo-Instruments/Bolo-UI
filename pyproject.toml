@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bolo-gui"
+version = "0.1.0"
+description = "Operator GUI for D-TACQ BOLO8 bolometer systems (calibrate, capture, plot, save)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy", "matplotlib"]
+
+[project.optional-dependencies]
+# real hardware; on site hapi is usually already installed editable in the same venv
+hw = ["acq400_hapi @ git+https://github.com/D-TACQ/acq400_hapi"]
+dev = ["pytest"]
+
+[project.scripts]
+bolo-gui = "bolo_gui.cli:main"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bolo_gui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

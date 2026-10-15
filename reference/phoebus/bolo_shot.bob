@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- BOLO8 shot panel: Calibrate / Capture / Save via bolo_shot.sh
+     Edit SCRIPT below to the absolute path of bolo_shot.sh.
+     UUT comes from the ACQ400CSSP launcher settings; override with the UUT macro. -->
+<display version="2.0.0">
+  <name>BOLO8 shot $(UUT)</name>
+  <macros>
+    <SCRIPT>/home/user/bin/bolo_shot.sh</SCRIPT>
+  </macros>
+  <width>420</width>
+  <height>250</height>
+  <widget type="label" version="2.0.0">
+    <name>Title</name>
+    <text>BOLO8 shot control: $(UUT)</text>
+    <x>20</x>
+    <y>15</y>
+    <width>380</width>
+    <height>30</height>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>Calibrate</name>
+    <actions>
+      <action type="command">
+        <command>$(SCRIPT) cal $(UUT)</command>
+        <description>Calibrate</description>
+      </action>
+    </actions>
+    <text>Calibrate</text>
+    <tooltip>Remove the light source first. Runs a full calibration.</tooltip>
+    <x>20</x>
+    <y>60</y>
+    <width>180</width>
+    <height>40</height>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>Capture</name>
+    <actions>
+      <action type="command">
+        <command>$(SCRIPT) cap $(UUT)</command>
+        <description>Capture</description>
+      </action>
+    </actions>
+    <text>Capture</text>
+    <x>220</x>
+    <y>60</y>
+    <width>180</width>
+    <height>40</height>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>Save</name>
+    <actions>
+      <action type="command">
+        <command>$(SCRIPT) save $(UUT)</command>
+        <description>Save last capture</description>
+      </action>
+    </actions>
+    <text>Save last capture</text>
+    <tooltip>Offload the last capture to a timestamped folder</tooltip>
+    <x>20</x>
+    <y>115</y>
+    <width>180</width>
+    <height>40</height>
+  </widget>
+  <widget type="action_button" version="3.0.0">
+    <name>CaptureSave</name>
+    <actions>
+      <action type="command">
+        <command>$(SCRIPT) capsave $(UUT)</command>
+        <description>Capture and save</description>
+      </action>
+    </actions>
+    <text>Capture + Save</text>
+    <x>220</x>
+    <y>115</y>
+    <width>180</width>
+    <height>40</height>
+  </widget>
+  <widget type="label" version="2.0.0">
+    <name>Hint</name>
+    <text>Save only after a capture, not after a calibration.
+Data and log: see DATA in bolo_shot.sh (default ~/bolo_data)</text>
+    <x>20</x>
+    <y>175</y>
+    <width>380</width>
+    <height>50</height>
+  </widget>
+</display>

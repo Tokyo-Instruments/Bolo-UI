@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=BOLO8 Control
+Comment=Calibrate, capture, plot and save BOLO8 shots
+# Adjust the path to the venv the app is installed in and the box name(s).
+Exec=/home/USER/PROJECTS/acq400_hapi/.venv/bin/bolo-gui acq2206_077
+Terminal=false
+Categories=Science;
