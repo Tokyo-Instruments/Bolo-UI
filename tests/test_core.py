@@ -52,9 +52,9 @@ def test_cal_capture_save_roundtrip(devs, tmp_path):
     shots = sequencer.offload(devs, "CAP", {"post": 20_000})
     assert [s.nsam for s in shots] == [20_000, 20_000]
     folder = save_shots(shots, tmp_path, note="t")
-    # same files bolo_demux.py writes
+    # same files bolo_demux.py --save writes (zero-padded channel since acq400_hapi 62e69a8)
     expected = shots[0].data["3_PWR"]
-    assert (np.fromfile(folder / "a.3_PWR.CAP.dat", dtype=np.int32) == expected).all()
+    assert (np.fromfile(folder / "a.03_PWR.CAP.dat", dtype=np.int32) == expected).all()
     back = load_shots(folder)
     assert [b.uut for b in back] == ["a", "b"]
     assert all((x.data == y.data).all() for x, y in zip(shots, back))
@@ -64,7 +64,7 @@ def test_cal_capture_save_roundtrip(devs, tmp_path):
 def test_load_folder_without_shot_json(devs, tmp_path):
     sequencer.capture(devs[:1], post=1000, trigger="int")
     shot = sequencer.offload(devs[:1], "CAP")[0]
-    for name in shot.data.dtype.names:                     # what bolo_shot.sh produced
+    for name in shot.data.dtype.names:                     # old bolo_shot.sh names: 1_PWR
         shot.data[name].tofile(tmp_path / f"a.{name}.CAP.dat")
     back = load_shots(tmp_path)[0]
     assert back.nchan == 8 and (back.data == shot.data).all()
@@ -152,3 +152,53 @@ def test_hdf5_cal_layout(devs, tmp_path):
     back = load_shots(save_shots(shots, tmp_path, fmt="hdf5"))[0]
     assert back.mode == "CAL" and back.data.dtype == shots[0].data.dtype
     assert (back.data == shots[0].data).all()
+
+
+def _cap_shots(devs, post=5000):
+    sequencer.calibrate(devs, CalMode.CAL_FLUSH, settle_s=0)
+    sequencer.capture(devs, post=post, trigger="int")
+    return sequencer.offload(devs, "CAP", {"post": post})
+
+
+def test_scaled_dat_matches_bolo_demux(devs, tmp_path):
+    from bolo_gui.config import QUANTITIES
+    shots = _cap_shots(devs)
+    folder = save_shots(shots, tmp_path, fmt="dat", scaled=True)
+    # bolo_demux.py --save_scaled: (data[field] * scaler).tofile(...)  -> float64
+    for qty in ("PWR", "MAG", "PHI"):
+        ref = shots[0].data[f"2_{qty}"] * QUANTITIES[qty][0]
+        got = np.fromfile(folder / f"a.02_{qty}.CAP.dat", dtype=np.float64)
+        assert got.tobytes() == ref.tobytes()
+    back = load_shots(folder)
+    assert all((x.data == y.data).all() for x, y in zip(shots, back))
+
+
+def test_scaled_dat_without_shot_json(devs, tmp_path):
+    """Folders written by bolo_demux.py --save_scaled have no shot.json."""
+    shots = _cap_shots(devs[:1])
+    folder = save_shots(shots, tmp_path, fmt="dat", scaled=True)
+    (folder / "shot.json").unlink()
+    assert (load_shots(folder)[0].data == shots[0].data).all()
+    raw = save_shots(shots, tmp_path, fmt="dat")
+    (raw / "shot.json").unlink()
+    assert (load_shots(raw)[0].data == shots[0].data).all()
+
+
+def test_scaled_cal_dat_roundtrip(devs, tmp_path):
+    _, shots = sequencer.calibrate_with_response(devs[:1], settle_s=0)
+    folder = save_shots(shots, tmp_path, fmt="dat", scaled=True)
+    (folder / "shot.json").unlink()
+    back = load_shots(folder)[0]
+    assert back.mode == "CAL" and (back.data == shots[0].data).all()
+
+
+def test_scaled_hdf5(devs, tmp_path):
+    h5py = pytest.importorskip("h5py")
+    shots = _cap_shots(devs)
+    folder = save_shots(shots, tmp_path, fmt="hdf5", scaled=True)
+    with h5py.File(folder / "shot.h5") as f:
+        pwr = f["a/PWR"]
+        assert pwr.dtype == np.float64 and pwr.attrs["scale"] == 1.0 and f.attrs["scaled"]
+        assert np.allclose(pwr[0] * pwr.attrs["scale"], shots[0].values(1, "PWR"))
+    back = load_shots(folder)
+    assert all((x.data == y.data).all() for x, y in zip(shots, back))

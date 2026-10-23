@@ -336,11 +336,12 @@ class BoloApp:
     def _save_async(self, shots: list[Shot]) -> None:
         """Save in a thread of its own, so a running cycle loop is not held up."""
         data_dir, note, fmt = self.data_dir, self.acquire.note.get(), self.acquire.selected_format()
+        scaled = self.acquire.save_scaled.get()
 
         def run():
             try:
                 folder = save_shots(shots, data_dir, note=note, extra={"app_version": __version__},
-                                    fmt=fmt)
+                                    fmt=fmt, scaled=scaled)
             except Exception as e:                       # noqa: BLE001
                 log.error("saving failed: %s", e)
                 self.worker.call_in_ui(messagebox.showerror, "Save failed", str(e))

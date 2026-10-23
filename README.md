@@ -240,6 +240,7 @@ bolo-gui [options] [BOX ...]
   --trg {int,ext rising,ext falling}   trigger source
   --active-chan "1,2,3;1-8"            active channels per box, ';' between boxes
   --format {dat,hdf5,both}             save format (default dat)
+  --save-scaled       save physical units instead of raw values (section 6.1)
   --autosave          save every capture
   --selftest          no window: calibrate, capture, save, reload, exit
   -v                  more detail in the log
@@ -288,7 +289,7 @@ The window has the controls on the left and three tabs on the right: **Plot**,
 | Read data from box | Read whatever the box currently holds (e.g. calibration data after *Calibrate, no flush*) |
 | Abort | Stop a running capture or cycle loop |
 | Folder, Note | Where data is saved; the note is stored with every saved shot |
-| Format | *D-TACQ .dat*, *HDF5*, or both (see section 6) |
+| Format, scaled | *D-TACQ .dat*, *HDF5*, or both. *scaled*: save values in mW, mV, rad… instead of raw values (see section 6) |
 | Autosave every capture | Save automatically after each capture |
 | Watch for panel-button / external shots | When a capture is started from the BOLO8 panel's push-buttons (or by any other program), read and plot it, and save it if autosave is on. After a panel calibration, update the calibration table |
 | Plot tab | Choose quantities (PWR, MAG, PHI; OHI, OHV for calibration data) and channels (`all`, `1-4`, `1,3,5`). Zoom with the toolbar; detail is redrawn when zooming in |
@@ -314,8 +315,8 @@ Each save creates one folder per acquisition in the data folder
 ```
 ~/bolo_data/
   20261015_101500/                         one folder per saved shot
-    acq2206_077.1_PWR.CAP.dat              D-TACQ .dat format: one file per channel and quantity,
-    acq2206_077.1_MAG.CAP.dat              identical to D-TACQ's bolo_demux.py --save
+    acq2206_077.01_PWR.CAP.dat             D-TACQ .dat format: one file per channel and quantity,
+    acq2206_077.01_MAG.CAP.dat             identical to D-TACQ's bolo_demux.py --save (--save_scaled)
     ...
     shot.json                              metadata for the .dat files
     shot.h5                                HDF5 format: everything in one file
@@ -328,10 +329,15 @@ Each save creates one folder per acquisition in the data folder
 Calibration data (from *Show sensor response* or *Read data from box*) is saved
 the same way, with `CAL` instead of `CAP` in the file names.
 
-### 6.1 Values are raw: apply the scale factors
+### 6.1 Raw or scaled values
 
-Both formats store the **raw integer values** from the box, exactly as D-TACQ's
-tools do. Multiply by the scale factor to get physical units:
+By default both formats store the **raw integer values** from the box, as
+`bolo_demux.py --save` does. Multiply by the scale factor to get physical units.
+With the *scaled* option (or `--save-scaled`) they store the values already in
+physical units, as 64-bit floats, exactly like `bolo_demux.py --save_scaled`:
+the raw value times the factor below. Scaled files are about twice (.dat) to
+three times (HDF5) as large. Raw data loses nothing: it can always be scaled
+later, including with different factors.
 
 | Quantity | Meaning | Scale | Unit | Type |
 | --- | --- | --- | --- | --- |
@@ -341,22 +347,30 @@ tools do. Multiply by the scale factor to get physical units:
 | OHI | Ohmic heating current (calibration only) | 2.6041666e-3 | mA | int16 |
 | OHV | Ohmic heating voltage (calibration only) | 3.81469725e-5 | V | int16 |
 
-These are the defaults of D-TACQ's `bolo_demux.py`. The PWR and MAG factors
-assume the 1V25 input gain setting. They are also stored with the data
-(`shot.json` → `scales`, HDF5 → dataset attributes `scale`, `unit`).
+The type column is for raw values; scaled values are always float64. These are
+the defaults of D-TACQ's `bolo_demux.py`. The PWR and MAG factors assume the
+1V25 input gain setting. They are also stored with the data (`shot.json` →
+`scales` and `scaled: true/false`; HDF5 → see 6.3).
 
 The sample rate is 10 kHz. The first ~20 samples contain a filter start-up spike
 and should be skipped.
 
 ### 6.2 D-TACQ .dat format
 
-File name `<box>.<channel>_<quantity>.<CAP|CAL>.dat`, raw values without header.
-All channels the box has are saved, not only the active ones.
+File name `<box>.<channel>_<quantity>.<CAP|CAL>.dat` with a two-digit channel
+number (`01`, `02`, …), values without header. All channels the box has are
+saved, not only the active ones.
 
 ```python
 import numpy as np
-pwr_mW = np.fromfile("acq2206_077.1_PWR.CAP.dat", dtype=np.int32) * 4.550e-3
+pwr_mW = np.fromfile("acq2206_077.01_PWR.CAP.dat", dtype=np.int32) * 4.550e-3   # raw
+pwr_mW = np.fromfile("acq2206_077.01_PWR.CAP.dat", dtype=np.float64)            # scaled
 ```
+
+The file name does not say whether a file is raw or scaled (as with D-TACQ's
+script); `scaled` in `shot.json` does. Data saved before October 2026 uses
+one-digit channel numbers (`1_PWR`), as did the older `bolo_shot.sh`; the
+application opens both, and folders from `bolo_demux.py` (raw or scaled) as well.
 
 `shot.json` holds the timestamp, note, POST, trigger, active channels, whether
 the shot was started from the panel (`source: external`), box firmware versions,
@@ -368,9 +382,9 @@ the latest calibration table and the scale factors.
 size. One group per box, one dataset per quantity with one row per channel:
 
 ```
-/                    attrs: timestamp, note, sample_rate, skip_samples
+/                    attrs: timestamp, note, sample_rate, skip_samples, scaled
 /acq2206_077/        attrs: mode (CAP/CAL), nchan, nsam, active_channels, source, post, trigger, meta_json
-/acq2206_077/PWR     [nchan, nsam], row 0 = channel 1; attrs: scale, unit
+/acq2206_077/PWR     [nchan, nsam], row 0 = channel 1; attrs: scale, unit, scaled, raw_scale
 /acq2206_077/MAG, PHI (and OHI, OHV for calibration data)
 /acq2206_077/calibfit   table: channel, sensitivity, tau, I0, Q0
 ```
@@ -381,6 +395,9 @@ with h5py.File("shot.h5") as f:
     pwr = f["acq2206_077/PWR"]
     ch1_mW = pwr[0] * pwr.attrs["scale"]
 ```
+
+This works for raw and scaled files alike: for scaled data the values are
+float64 in physical units and `scale` is 1.0 (`raw_scale` keeps the factor).
 
 HDF5 files can also be opened with HDFView, MATLAB (`h5read`) or any other HDF5 tool.
 

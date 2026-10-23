@@ -91,8 +91,13 @@ class AcquirePanel(ttk.Frame):
         ttk.Entry(sv, textvariable=self.note, width=24).grid(row=1, column=1, columnspan=2, sticky="we")
         ttk.Label(sv, text="Format:").grid(row=2, column=0, sticky="w", padx=4)
         self.save_format = tk.StringVar(value=SAVE_FORMATS.get(settings.save_format, SAVE_FORMATS["dat"]))
-        ttk.Combobox(sv, textvariable=self.save_format, state="readonly", width=14,
-                     values=list(SAVE_FORMATS.values())).grid(row=2, column=1, sticky="w")
+        ff = ttk.Frame(sv)
+        ff.grid(row=2, column=1, columnspan=2, sticky="w")
+        ttk.Combobox(ff, textvariable=self.save_format, state="readonly", width=12,
+                     values=list(SAVE_FORMATS.values())).pack(side="left")
+        self.save_scaled = tk.BooleanVar(value=settings.save_scaled)
+        ttk.Checkbutton(ff, text="scaled (mW, mV, rad…)", variable=self.save_scaled).pack(
+            side="left", padx=6)
         self.autosave = tk.BooleanVar(value=settings.autosave)
         ttk.Checkbutton(sv, text="Autosave every capture", variable=self.autosave).grid(
             row=3, column=0, columnspan=3, sticky="w", padx=4)
@@ -144,6 +149,7 @@ class AcquirePanel(ttk.Frame):
         s.trigger = self.trigger.get()
         s.autosave = self.autosave.get()
         s.save_format = self.selected_format()
+        s.save_scaled = self.save_scaled.get()
         s.watch = self.watch.get()
         s.cal_show_response = self.cal_response.get()
         try:
